@@ -1,35 +1,23 @@
 /**
  * ============================================================
- *   SET MALIK - Quantumult X Script
- *   Bot: @setmalik_bot
- *   Fungsi: Intercept & manipulasi hasil dadu via bot Telegram
- *   Target: www.google.com/search?.*dadu.*
- * ============================================================
- *
- *  HOW TO USE:
- *  1. Upload file ini ke GitHub (raw URL)
- *  2. Pasang di Quantumult X -> rewrite_local:
- *     ^https?:\/\/www\.google\.com\/search\?.*dadu.* url script-response-body <URL_RAW_FILE_INI>
- *  3. Tambahkan di [mitm] -> hostname: www.google.com
- *  4. Kirim angka ke @setmalik_bot untuk set hasil dadu
- *     Format: /set 3  (untuk set angka 3)
- *     Format: /set 1 2 3 4 5 6  (untuk sequence 6 dadu)
- *     Format: /reset  (untuk kembali ke mode random)
- *
+ *   SET MALIK v2 - Quantumult X Script
+ *   Bot    : @setmalik_bot
+ *   Perintah : /setroll [angka]  /resetroll  /status
+ *   Target : www.google.com/search?.*dadu.*
  * ============================================================
  */
 
 // ===================== KONFIGURASI ========================
-const BOT_TOKEN = "8850509848:AAFNPHTdth4SYjTQcW_U48QmhWzSXsJx1CU";
-const CHAT_ID   = "8092122107"; // Chat ID kamu
-const API_BASE  = "https://api.telegram.org/bot" + BOT_TOKEN;
+var BOT_TOKEN = "8850509848:AAFNPHTdth4SYjTQcW_U48QmhWzSXsJx1CU";
+var CHAT_ID   = "8092122107";
+var API_BASE  = "https://api.telegram.org/bot" + BOT_TOKEN;
 // ==========================================================
 
-// Ambil setting angka dari bot Telegram
-function getBotSetting() {
+// Ambil target angka dari reply bot
+function getTargetFromBot() {
   return new Promise(function(resolve) {
     $task.fetch({
-      url: API_BASE + "/getUpdates?limit=10&allowed_updates=%5B%22message%22%5D",
+      url: API_BASE + "/getUpdates?limit=30",
       method: "GET"
     }).then(function(response) {
       try {
@@ -39,45 +27,58 @@ function getBotSetting() {
           return;
         }
 
-        // Ambil pesan terbaru dari chat kamu
-        var messages = data.result
-          .filter(function(u) {
-            return u.message && String(u.message.chat.id) === String(CHAT_ID);
-          })
-          .sort(function(a, b) {
-            return b.message.date - a.message.date;
-          });
+        var updates = data.result;
 
-        if (messages.length === 0) {
-          resolve(null);
-          return;
-        }
+        // Cari pesan dari bot sendiri yang mengandung "diatur ke"
+        // (reply bot setelah user kirim /setroll)
+        var botReplies = updates.filter(function(u) {
+          return u.message
+            && u.message.from
+            && u.message.from.is_bot === true
+            && u.message.text
+            && u.message.text.indexOf("diatur ke") !== -1;
+        }).sort(function(a, b) {
+          return b.message.date - a.message.date;
+        });
 
-        var lastMsg = messages[0].message.text || "";
-
-        // Parse perintah /set
-        if (lastMsg.indexOf("/set ") === 0) {
-          var parts = lastMsg.replace("/set ", "").trim().split(/\s+/);
-          var numbers = parts
-            .map(function(n) { return parseInt(n); })
-            .filter(function(n) { return !isNaN(n) && n >= 1 && n <= 6; });
-          if (numbers.length > 0) {
-            resolve(numbers);
-            return;
+        if (botReplies.length > 0) {
+          var text = botReplies[0].message.text;
+          var match = text.match(/diatur ke[:\s\xA0]+(\d+)/i);
+          if (match) {
+            var target = parseInt(match[1]);
+            if (!isNaN(target) && target > 0) {
+              resolve(target);
+              return;
+            }
           }
         }
 
-        // /reset -> kembali random
-        if (lastMsg.indexOf("/reset") === 0) {
-          resolve("random");
-          return;
-        }
+        // Cari pesan user yang mengandung /setroll
+        var userMsgs = updates.filter(function(u) {
+          return u.message
+            && u.message.text
+            && (u.message.text.indexOf("/setroll") === 0
+                || u.message.text.indexOf("/resetroll") === 0);
+        }).sort(function(a, b) {
+          return b.message.date - a.message.date;
+        });
 
-        // Coba parse angka langsung (tanpa /set)
-        var directNum = parseInt(lastMsg);
-        if (!isNaN(directNum) && directNum >= 1 && directNum <= 6) {
-          resolve([directNum]);
-          return;
+        if (userMsgs.length > 0) {
+          var lastCmd = userMsgs[0].message.text;
+
+          if (lastCmd.indexOf("/resetroll") === 0) {
+            resolve(null);
+            return;
+          }
+
+          if (lastCmd.indexOf("/setroll") === 0) {
+            var numStr = lastCmd.replace("/setroll", "").trim();
+            var num = parseInt(numStr);
+            if (!isNaN(num) && num > 0) {
+              resolve(num);
+              return;
+            }
+          }
         }
 
         resolve(null);
@@ -88,140 +89,109 @@ function getBotSetting() {
   });
 }
 
-// Kirim notifikasi ke bot setelah berhasil set
-function sendNotification(message) {
-  if (CHAT_ID === "GANTI_DENGAN_CHAT_ID_KAMU") return;
+// Distribusi total angka ke N dadu (masing-masing 1-6)
+function distributeDice(total, count) {
+  var minTotal = count;
+  var maxTotal = count * 6;
+
+  if (total < minTotal) total = minTotal;
+  if (total > maxTotal) total = maxTotal;
+
+  var dice = [];
+  var i;
+  for (i = 0; i < count; i++) dice.push(1);
+
+  var remaining = total - count;
+  for (i = 0; i < count && remaining > 0; i++) {
+    var add = Math.min(5, remaining);
+    dice[i] += add;
+    remaining -= add;
+  }
+
+  // Acak urutan supaya tidak terlihat pola
+  for (i = dice.length - 1; i > 0; i--) {
+    var j = Math.floor(Math.random() * (i + 1));
+    var temp = dice[i];
+    dice[i] = dice[j];
+    dice[j] = temp;
+  }
+
+  return dice;
+}
+
+// Kirim notifikasi ke bot
+function notify(msg) {
   $task.fetch({
     url: API_BASE + "/sendMessage",
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       chat_id: CHAT_ID,
-      text: message,
+      text: msg,
       parse_mode: "HTML"
     })
   }).catch(function() {});
 }
 
-// Modifikasi rekursif nilai dadu di JSON response
-function modifyDiceValues(obj, targetNums, idx) {
-  if (!idx) idx = { i: 0 };
-
-  if (typeof obj === "number" && obj >= 1 && obj <= 6) {
-    var newVal = targetNums[idx.i % targetNums.length];
-    idx.i++;
-    return newVal;
-  }
-
-  if (Array.isArray(obj)) {
-    return obj.map(function(item) {
-      return modifyDiceValues(item, targetNums, idx);
-    });
-  }
-
-  if (typeof obj === "object" && obj !== null) {
-    var result = {};
-    var diceKeys = [
-      "result", "dice", "value", "number", "roll", "score",
-      "angka", "dadu", "hasil", "point", "points", "total",
-      "face", "side", "val", "num", "outcome", "diceResult"
-    ];
-    for (var key in obj) {
-      if (obj.hasOwnProperty(key)) {
-        var keyLower = key.toLowerCase();
-        var isDiceKey = diceKeys.some(function(k) {
-          return keyLower.indexOf(k) !== -1;
-        });
-        if (isDiceKey) {
-          result[key] = modifyDiceValues(obj[key], targetNums, idx);
-        } else {
-          result[key] = obj[key];
-        }
-      }
-    }
-    return result;
-  }
-
-  return obj;
-}
-
 // ===================== MAIN LOGIC ========================
-getBotSetting().then(function(setting) {
-  try {
-    var body = $response.body;
+getTargetFromBot().then(function(targetTotal) {
+  var body = $response.body;
 
-    if (!body) {
-      $done({});
-      return;
-    }
-
-    // Jika mode random atau tidak ada setting
-    if (!setting || setting === "random") {
-      $done({ body: body });
-      return;
-    }
-
-    // Coba parse JSON
-    var parsed;
-    try {
-      parsed = JSON.parse(body);
-    } catch (e) {
-      // Bukan JSON -> cari pattern dadu di text/HTML
-      var modified = body;
-      var dicePatterns = [
-        { regex: /"result"\s*:\s*(\d+)/g, key: "result" },
-        { regex: /"dice"\s*:\s*(\d+)/g, key: "dice" },
-        { regex: /"value"\s*:\s*(\d+)/g, key: "value" },
-        { regex: /"number"\s*:\s*(\d+)/g, key: "number" },
-        { regex: /"roll"\s*:\s*(\d+)/g, key: "roll" },
-        { regex: /"score"\s*:\s*(\d+)/g, key: "score" },
-        { regex: /"angka"\s*:\s*(\d+)/g, key: "angka" },
-        { regex: /"dadu"\s*:\s*(\d+)/g, key: "dadu" },
-        { regex: /"hasil"\s*:\s*(\d+)/g, key: "hasil" }
-      ];
-
-      var replaceIdx = 0;
-      var didModify = false;
-
-      dicePatterns.forEach(function(p) {
-        modified = modified.replace(p.regex, function(match, num) {
-          var newNum = setting[replaceIdx % setting.length];
-          replaceIdx++;
-          didModify = true;
-          return match.replace(num, String(newNum));
-        });
-      });
-
-      if (didModify) {
-        sendNotification(
-          "\u2705 <b>SET MALIK AKTIF</b>\n" +
-          "\uD83C\uDFB2 Angka dadu diset: <b>" + setting.join(", ") + "</b>\n" +
-          "\uD83E\uDD16 Bot: @setmalik_bot\n" +
-          "\u23F0 Mode: Text/HTML"
-        );
-        $done({ body: modified });
-      } else {
-        $done({ body: body });
-      }
-      return;
-    }
-
-    // Modifikasi JSON
-    var modifiedObj = modifyDiceValues(parsed, setting);
-    var newBody = JSON.stringify(modifiedObj);
-
-    sendNotification(
-      "\u2705 <b>SET MALIK BERHASIL</b>\n" +
-      "\uD83C\uDFB2 Target angka: <b>" + setting.join(", ") + "</b>\n" +
-      "\uD83E\uDD16 Bot: @setmalik_bot\n" +
-      "\uD83D\uDCF1 Mode: JSON Response"
-    );
-
-    $done({ body: newBody });
-
-  } catch (err) {
-    $done({ body: $response.body || "" });
+  if (!body) {
+    $done({});
+    return;
   }
+
+  // Jika tidak ada setting / reset → pass normal
+  if (!targetTotal) {
+    $done({ body: body });
+    return;
+  }
+
+  // ─── Inject script override ke halaman Google dadu ───
+  // Script ini override Math.random() supaya dadu keluar angka yang dikontrol
+  var diceValues = distributeDice(targetTotal, 9); // default 9 dadu Google
+  var diceJSON   = JSON.stringify(diceValues);
+  var totalActual = diceValues.reduce(function(a, b) { return a + b; }, 0);
+
+  var injectScript = [
+    "<script>",
+    "(function(){",
+    "  var _targetDice = " + diceJSON + ";",
+    "  var _idx = 0;",
+    "  var _orig = Math.random.bind(Math);",
+    "  Math.random = function() {",
+    "    if (_idx < _targetDice.length) {",
+    "      var v = _targetDice[_idx++];",
+    "      return (v - 1) / 6 + 0.0001;",
+    "    }",
+    "    return _orig();",
+    "  };",
+    "  Math.floor_orig = Math.floor.bind(Math);",
+    "})();",
+    "<\/script>"
+  ].join("\n");
+
+  // Sisipkan sebelum </head>
+  var modified = body;
+  if (body.indexOf("</head>") !== -1) {
+    modified = body.replace("</head>", injectScript + "\n</head>");
+  } else if (body.indexOf("</body>") !== -1) {
+    modified = body.replace("</body>", injectScript + "\n</body>");
+  } else {
+    modified = body + "\n" + injectScript;
+  }
+
+  notify(
+    "\u2705 <b>SET MALIK AKTIF</b>\n" +
+    "\uD83C\uDFB2 Target total: <b>" + targetTotal + "</b>\n" +
+    "\uD83D\uDD22 Distribusi: <b>" + diceValues.join(" | ") + "</b>\n" +
+    "\uD83D\uDCCA Actual total: <b>" + totalActual + "</b>\n" +
+    "\uD83E\uDD16 @setmalik_bot"
+  );
+
+  $done({ body: modified });
+
 }).catch(function() {
   $done({ body: $response.body || "" });
 });
