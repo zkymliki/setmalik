@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Remote KB by Kaurev (SET MALIK v21)
-// @version      21.0
-// @description  Remote Control Google Dice Roller via Firebase (Hybrid No-CORS Engine)
+// @name         Remote KB by Kaurev (SET MALIK v22)
+// @version      22.0
+// @description  Remote Control Google Dice Roller via Firebase (Self-Contained & Auto Shadow DOM Bypass)
 // @author       Kaurev & Antigravity
 // @match        *://*/*
 // @run-at       document-start
@@ -11,7 +11,7 @@
 (function() {
   'use strict';
 
-  // Batasi eksekusi hanya pada domain Google Search
+  // Hanya jalankan script jika berada di halaman Google Search
   const currentDomain = window.location.hostname;
   if (!currentDomain.includes("google.com") && !currentDomain.includes("google.co.id")) {
     return;
@@ -26,11 +26,10 @@
   let _isRolling = false;
   let _clickTimeout = null;
   let _rollTimeout = null;
-  const isIframe = (window.self !== window.top);
 
-  // Formula konversi nilai dadu 1-6 ke range Math.random()
+  // Formula konversi nilai dadu 1-6 ke range Math.random() (menggunakan faktor goyangan visual Google)
   function r2d(v) {
-    return (v - 1) / 6 + 0.03;
+    return (v - 1) / 6 + 0.07 * _o();
   }
 
   // Pembagian nilai target ke N dadu secara adil
@@ -62,150 +61,162 @@
     return count > 0 ? count : 3; // Fallback ke 3 dadu jika gagal deteksi
   }
 
-  // Reset Firebase ke null
-  function resetFirebase() {
-    fetch(FIREBASE_URL, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: '{"target":null}'
-    }).catch(() => {});
+  // Menampilkan toast notifikasi cantik bergaya glassmorphism di halaman web
+  function showToast(title, desc) {
+    const initToast = () => {
+      if (!document.body) {
+        setTimeout(initToast, 100);
+        return;
+      }
+      
+      const toast = document.createElement('div');
+      toast.style.position = 'fixed';
+      toast.style.top = '30px';
+      toast.style.left = '50%';
+      toast.style.transform = 'translateX(-50%) translateY(-20px)';
+      toast.style.zIndex = '9999999';
+      toast.style.background = 'rgba(15, 23, 42, 0.85)';
+      toast.style.backdropFilter = 'blur(12px)';
+      toast.style.webkitBackdropFilter = 'blur(12px)';
+      toast.style.border = '1px solid rgba(255, 255, 255, 0.15)';
+      toast.style.borderRadius = '16px';
+      toast.style.padding = '12px 24px';
+      toast.style.color = '#fff';
+      toast.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      toast.style.boxShadow = '0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.4)';
+      toast.style.display = 'flex';
+      toast.style.flexDirection = 'column';
+      toast.style.alignItems = 'center';
+      toast.style.gap = '4px';
+      toast.style.transition = 'all 0.5s cubic-bezier(0.16, 1, 0.3, 1)';
+      toast.style.opacity = '0';
+      toast.style.pointerEvents = 'none';
+
+      const titleEl = document.createElement('span');
+      titleEl.innerText = title;
+      titleEl.style.fontWeight = 'bold';
+      titleEl.style.fontSize = '14px';
+      titleEl.style.color = '#38bdf8'; // Sky blue accent
+
+      const descEl = document.createElement('span');
+      descEl.innerText = desc;
+      descEl.style.fontSize = '12px';
+      descEl.style.color = '#94a3b8';
+
+      toast.appendChild(titleEl);
+      toast.appendChild(descEl);
+      document.body.appendChild(toast);
+
+      // Animasi Fade In
+      setTimeout(() => {
+        toast.style.opacity = '1';
+        toast.style.transform = 'translateX(-50%) translateY(0)';
+      }, 100);
+
+      // Fade Out setelah 4 detik
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateX(-50%) translateY(-20px)';
+        setTimeout(() => toast.remove(), 500);
+      }, 4000);
+    };
+    initToast();
   }
 
-  // Pancarkan target ke semua frame (untuk sinkronisasi bypass CORS)
-  function broadcastTarget(target) {
-    try {
-      // Kirim ke semua iframe anak
-      const iframes = document.querySelectorAll("iframe");
-      iframes.forEach(f => {
-        f.contentWindow.postMessage({ type: "SET_TARGET", target: target }, "*");
-      });
-    } catch(e) {}
-    try {
-      // Kirim ke parent window jika kita berada di dalam iframe
-      if (isIframe) {
-        window.parent.postMessage({ type: "SET_TARGET", target: target }, "*");
-      }
-    } catch(e) {}
+  // Tampilkan notifikasi saat script pertama kali jalan di Google
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      showToast("🎲 SET MALIK v22", "Userscript Aktif - Menunggu lemparan...");
+    });
+  } else {
+    showToast("🎲 SET MALIK v22", "Userscript Aktif - Menunggu lemparan...");
   }
 
-  // Pancarkan sinyal reset
-  function broadcastReset() {
-    try {
-      if (isIframe) {
-        window.parent.postMessage({ type: "RESET_TARGET" }, "*");
-      } else {
-        const iframes = document.querySelectorAll("iframe");
-        iframes.forEach(f => {
-          f.contentWindow.postMessage({ type: "RESET_TARGET" }, "*");
-        });
-      }
-    } catch(e) {}
-  }
-
-  // Pasang listener pesan komunikasi antar-frame
-  window.addEventListener("message", function(e) {
-    if (e.data) {
-      if (e.data.type === "SET_TARGET") {
-        _activeTarget = e.data.target;
-      }
-      if (e.data.type === "RESET_TARGET") {
-        // Hapus target secara lokal
-        _activeTarget = null;
-        _q = [];
-        // Jika kita parent (punya akses CORS), bantu bersihkan database Firebase
-        if (!isIframe) {
-          resetFirebase();
-        }
-      }
-    }
-  });
-
-  // Polling database Firebase secara berkala
-  function poll() {
-    if (_isRolling) return;
-    fetch(FIREBASE_URL + "?nc=" + Date.now())
-      .then(r => r.json())
-      .then(d => {
-        const target = (d && d.target !== null && d.target !== undefined) ? d.target : null;
-        _activeTarget = target;
-        broadcastTarget(target);
-      })
-      .catch(() => {
-        // Polling gagal (CORS block di iframe). Abaikan, kita akan menerima data via postMessage.
-      });
-  }
-
-  setInterval(poll, 800);
-  setTimeout(poll, 50);
-
-  // Deteksi klik global cerdas dengan composedPath filter
+  // Deteksi klik lempar secara global dengan composedPath menembus Shadow DOM
   function checkClick(e) {
     if (_isRolling) return;
     const path = e.composedPath ? e.composedPath() : [];
-    let isAddDiceClick = false;
-    let isClearClick = false;
+    let isRollClick = false;
 
     for (let i = 0; i < path.length; i++) {
       const el = path[i];
       if (!el) continue;
+      
+      // Deteksi berdasarkan teks tombol lempar
       if (el.innerText) {
         const txt = el.innerText.trim().toLowerCase();
-        if (/^(d4|d6|d8|d10|d12|d20|\+|-)$/.test(txt)) {
-          isAddDiceClick = true;
-        }
-        if (txt === "hapus" || txt === "clear" || txt === "reset") {
-          isClearClick = true;
+        if (txt === "lempar" || txt === "roll" || txt === "buwang" || el.id === "lempar") {
+          isRollClick = true;
+          break;
         }
       }
+      // Deteksi berdasarkan attribute aria-label
       if (el.getAttribute) {
         const aria = el.getAttribute("aria-label") ? el.getAttribute("aria-label").toLowerCase() : "";
-        if (aria.includes("d4") || aria.includes("d6") || aria.includes("d8") || aria.includes("d10") || aria.includes("d12") || aria.includes("d20")) {
-          isAddDiceClick = true;
-        }
-        if (aria.includes("clear") || aria.includes("hapus")) {
-          isClearClick = true;
+        if (aria.includes("roll") || aria.includes("lempar")) {
+          isRollClick = true;
+          break;
         }
       }
     }
 
-    if (!isAddDiceClick && !isClearClick) {
-      _justClicked = true;
-      if (_clickTimeout) clearTimeout(_clickTimeout);
-      _clickTimeout = setTimeout(() => { _justClicked = false; }, 2500);
+    if (isRollClick) {
+      if (_activeTarget !== null && _activeTarget !== undefined) {
+        const n = nDice();
+        const vals = dist(_activeTarget, n);
+        _q = vals.map(r2d);
+        _isRolling = true;
+        
+        console.log("[SM22] Lembaran aktif! target=" + _activeTarget + " vals=" + vals.join(","));
+
+        // Hapus target di Firebase menggunakan PUT (identik seperti reset bot) setelah jeda 1 detik
+        setTimeout(function() {
+          fetch(FIREBASE_URL, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: '{"target":null}'
+          }).catch(function(){});
+        }, 1000);
+
+        _activeTarget = null;
+
+        // Kunci target selama 4 detik penuh agar animasi selesai bergulir
+        if (_rollTimeout) clearTimeout(_rollTimeout);
+        _rollTimeout = setTimeout(function() {
+          _isRolling = false;
+          _q = [];
+        }, 4000);
+      }
     }
   }
 
   window.addEventListener("mousedown", checkClick, true);
   window.addEventListener("touchstart", checkClick, true);
 
-  // Hijack Math.random secara universal di semua context
+  // Hijack Math.random secara universal
   Math.random = function() {
-    if (_justClicked && !_isRolling) {
-      if (_activeTarget !== null && _activeTarget !== undefined) {
-        const n = nDice();
-        const vals = dist(_activeTarget, n);
-        _q = vals.map(r2d);
-        _isRolling = true;
-        _justClicked = false;
-        
-        // Bersihkan database Firebase
-        resetFirebase();
-        broadcastReset();
-        _activeTarget = null;
-
-        // Kunci target selama 4 detik penuh agar animasi selesai
-        if (_rollTimeout) clearTimeout(_rollTimeout);
-        _rollTimeout = setTimeout(() => {
-          _isRolling = false;
-          _q = [];
-        }, 4000);
-      }
-    }
-
     if (_isRolling && _q.length > 0) {
       return _q.shift();
     }
     return _o();
   };
+
+  // Polling Firebase secara berkala
+  function poll() {
+    if (_isRolling) return;
+    fetch(FIREBASE_URL + "?nc=" + Date.now())
+      .then(r => r.json())
+      .then(d => {
+        if (d && d.target !== null && d.target !== undefined) {
+          _activeTarget = d.target;
+        } else {
+          _activeTarget = null;
+        }
+      })
+      .catch(() => {});
+  }
+
+  setInterval(poll, 800);
+  setTimeout(poll, 50);
 
 })();
