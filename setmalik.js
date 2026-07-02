@@ -1,13 +1,13 @@
 /**
- * SET MALIK v12 - Quantumult X Script
- * Menembus Shadow DOM Google Search & Memperbaiki Bug Reset Target Firebase
- * Garansi 100% Stabil & Akurat!
+ * SET MALIK v13 - Quantumult X Script
+ * Deteksi Klik Tombol Lempar Menggunakan Filter Event ComposedPath
+ * Anti-Gagal & Bebas Ketergantungan Teks Tombol di Shadow DOM
  */
 
 const FIREBASE_URL = "https://setkbojeng-default-rtdb.asia-southeast1.firebasedatabase.app/8092122107.json";
 
 // Kirim notifikasi ke iPhone saat dimuat
-$notify("🎲 SET MALIK v12", "Shadow DOM v2 Siap", "Menunggu tombol Lempar diklik...");
+$notify("🎲 SET MALIK v13", "Sistem Filter Klik Siap", "Menunggu lemparan dadu...");
 
 let body = $response.body;
 if (!body) {
@@ -36,15 +36,15 @@ if (headers) {
   });
 }
 
-// JS Injector v12
-const INJECT = '<script id="_sm12">(function(){' +
+// JS Injector v13
+const INJECT = '<script id="_sm13">(function(){' +
   'var FB="' + FIREBASE_URL + '";' +
   'var _o=Math.random.bind(Math);' +
   'var _q=[];' +
   'var _activeTarget=null;' +
   'var _justClicked=false;' +
   'var _clickTimeout=null;' +
-  'function r2d(v){return(v-1)/6+0.03;}' + // Formula pemetaan dadu 1-6 ke Math.random
+  'function r2d(v){return(v-1)/6+0.03;}' +
   // Pembagian nilai target ke N dadu secara adil
   'function dist(t,n){' +
     't=Math.max(n,Math.min(n*6,parseInt(t)));' +
@@ -60,37 +60,51 @@ const INJECT = '<script id="_sm12">(function(){' +
     'try {' +
       'var roots = Array.from(document.querySelectorAll("*")).filter(el => el.shadowRoot);' +
       'roots.forEach(function(root){' +
-        // Google Dice Roller merender dadu aktif ke dalam elemen canvas terpisah di Shadow DOM
         'var canvasList = root.shadowRoot.querySelectorAll("canvas");' +
         'if(canvasList.length > 0) count = canvasList.length;' +
       '});' +
     '} catch(e) {}' +
-    'return count > 0 ? count : 3;' + // Default fallback ke 3 dadu
+    'return count > 0 ? count : 3;' + // Fallback ke 3 dadu
   '}' +
-  // Event listener klik menembus Shadow DOM menggunakan composedPath()
+  // Deteksi klik cerdas menggunakan composedPath filter
   'function checkClick(e){' +
     'var path = e.composedPath ? e.composedPath() : [];' +
-    'var isRollClick = false;' +
+    'var isInDiceWidget = false;' +
+    'var isAddDiceClick = false;' +
+    'var isClearClick = false;' +
     'for(var i=0; i<path.length; i++){' +
       'var el = path[i];' +
+      'if(!el || !el.tagName) continue;' +
+      // Cek apakah klik terjadi di dalam area widget dadu
+      'var className = el.className ? String(el.className).toLowerCase() : "";' +
+      'var idName = el.id ? String(el.id).toLowerCase() : "";' +
+      'if(className.includes("diceroller") || idName.includes("diceroller") || el.tagName.toLowerCase() === "g-card") {' +
+        'isInDiceWidget = true;' +
+      '}' +
+      // Cek apakah klik terjadi pada tombol tambah dadu (d4, d6, d8, d10, d12, d20)
       'if(el.innerText) {' +
         'var txt = el.innerText.trim().toLowerCase();' +
-        'if(txt === "lempar" || txt === "roll" || txt === "kocok") {' +
-          'isRollClick = true;' +
-          'break;' +
+        'if(/^(d4|d6|d8|d10|d12|d20|\\+|-)$/.test(txt)) {' +
+          'isAddDiceClick = true;' +
+        '}' +
+        'if(txt === "hapus" || txt === "clear" || txt === "reset") {' +
+          'isClearClick = true;' +
         '}' +
       '}' +
       'if(el.getAttribute) {' +
-        'var aria = el.getAttribute("aria-label");' +
-        'if(aria && (aria.toLowerCase().includes("roll") || aria.toLowerCase().includes("lempar"))) {' +
-          'isRollClick = true;' +
-          'break;' +
+        'var aria = el.getAttribute("aria-label") ? el.getAttribute("aria-label").toLowerCase() : "";' +
+        'if(aria.includes("d4") || aria.includes("d6") || aria.includes("d8") || aria.includes("d10") || aria.includes("d12") || aria.includes("d20")) {' +
+          'isAddDiceClick = true;' +
+        '}' +
+        'if(aria.includes("clear") || aria.includes("hapus")) {' +
+          'isClearClick = true;' +
         '}' +
       '}' +
     '}' +
-    'if(isRollClick) {' +
+    // Klik tombol Lempar yang valid adalah klik di dalam widget dadu, bukan klik tambah dadu, dan bukan klik hapus
+    'if(isInDiceWidget && !isAddDiceClick && !isClearClick) {' +
       '_justClicked=true;' +
-      'console.log("[SM12] Tombol Lempar diklik!");' +
+      'console.log("[SM13] Lemparan dadu valid terdeteksi!");' +
       'if(_clickTimeout) clearTimeout(_clickTimeout);' +
       '_clickTimeout=setTimeout(function(){_justClicked=false;},2500);' +
     '}' +
@@ -102,7 +116,6 @@ const INJECT = '<script id="_sm12">(function(){' +
     'if(_q.length>0){' +
       'var v=_q.shift();' +
       'if(_q.length===0){' +
-        // Setelah dadu terakhir selesai dimanipulasi, hapus target di Firebase
         'fetch(FB,{method:"PATCH",headers:{"Content-Type":"application/json"},body:\'{"target":null}\'}).catch(function(){});' +
       '}' +
       'return v;' +
@@ -113,7 +126,7 @@ const INJECT = '<script id="_sm12">(function(){' +
       '_q=vals.map(r2d);' +
       '_activeTarget=null;' +
       '_justClicked=false;' +
-      'console.log("[SM12] Dadu dimodifikasi! total=" + vals.reduce((a,b)=>a+b,0) + " vals=" + vals.join(","));' +
+      'console.log("[SM13] Dadu dimodifikasi! total=" + vals.reduce((a,b)=>a+b,0) + " vals=" + vals.join(","));' +
       'if(_q.length>0) return _q.shift();' +
     '}' +
     'return _o();' +
@@ -126,7 +139,7 @@ const INJECT = '<script id="_sm12">(function(){' +
         'if(d && d.target !== null && d.target !== undefined){' +
           '_activeTarget=d.target;' +
         '} else {' +
-          '_activeTarget=null;' + // Reset ke null jika target di database kosong
+          '_activeTarget=null;' +
         '}' +
       '})' +
       '.catch(function(){});' +
