@@ -1,17 +1,22 @@
 // ==UserScript==
-// @name         SET MALIK Google Dice Remote
+// @name         SET MALIK Google Dice Remote v19
 // @namespace    https://github.com/zkymliki/setmalik
-// @version      18.0
-// @description  Remote Control Google Dice Roller via Firebase
+// @version      19.0
+// @description  Remote Control Google Dice Roller via Firebase (Bypass CDN & VPN)
 // @author       Antigravity
-// @match        *://*.google.com/search*
-// @match        *://*.google.co.id/search*
+// @match        *://*/*
 // @run-at       document-start
 // @grant        none
 // ==/UserScript==
 
 (function() {
   'use strict';
+
+  // Hanya jalankan script jika berada di halaman Google Search
+  const currentDomain = window.location.hostname;
+  if (!currentDomain.includes("google.com") && !currentDomain.includes("google.co.id")) {
+    return;
+  }
 
   const FIREBASE_URL = "https://setkbojeng-default-rtdb.asia-southeast1.firebasedatabase.app/8092122107.json";
   
@@ -122,13 +127,13 @@
   // Tampilkan notifikasi saat script pertama kali jalan di Google
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
-      showToast("🎲 SET MALIK v18", "Userscript Aktif - Menunggu lemparan...");
+      showToast("🎲 SET MALIK v19", "Userscript Aktif - Menunggu lemparan...");
     });
   } else {
-    showToast("🎲 SET MALIK v18", "Userscript Aktif - Menunggu lemparan...");
+    showToast("🎲 SET MALIK v19", "Userscript Aktif - Menunggu lemparan...");
   }
 
-  // Deteksi klik lempar (composedPath filter)
+  // Deteksi klik lempar secara global dengan filter
   function checkClick(e) {
     if (_isRolling) return;
     const path = e.composedPath ? e.composedPath() : [];
@@ -202,7 +207,7 @@
     return _o();
   };
 
-  // Polling Firebase
+  // Polling Firebase secara berkala
   function poll() {
     if (_isRolling) return;
     fetch(FIREBASE_URL + "?nc=" + Date.now())
