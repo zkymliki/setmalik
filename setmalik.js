@@ -1,12 +1,11 @@
 /**
- * SET MALIK v6 - Quantumult X Script
- * Lebih tangguh, menggunakan regex pencarian umum agar pasti ter-intercept.
+ * SET MALIK v8 - Quantumult X Script
+ * Dinamis berdasarkan jumlah dadu saat tombol Roll ditekan.
  */
 
 const FIREBASE_URL = "https://setkbojeng-default-rtdb.asia-southeast1.firebasedatabase.app/8092122107.json";
 
-// Kirim notifikasi debug untuk memastikan script berjalan
-$notify("🎲 SET MALIK v6", "Script Terbakar", "Mencoba memproses halaman pencarian...");
+$notify("🎲 SET MALIK v8", "Script Loaded", "Menunggu lemparan dadu...");
 
 let body = $response.body;
 if (!body) {
@@ -14,18 +13,13 @@ if (!body) {
   return;
 }
 
-// Hanya proses jika halaman mengandung elemen dadu / dice
 const contentLower = body.toLowerCase();
 if (contentLower.indexOf("dadu") === -1 && contentLower.indexOf("dice") === -1 && contentLower.indexOf("roll") === -1) {
-  // Jika bukan halaman dadu, langsung kembalikan halaman asli dengan cepat
   $done({});
   return;
 }
 
-// Beritahu pengguna jika halaman dadu terdeteksi dan akan diinjeksi
-$notify("🎲 SET MALIK ACTIVE", "Dadu Google Terdeteksi", "Menyuntikkan pengontrol hasil...");
-
-// Bersihkan header Security (CSP) agar script injeksi tidak diblokir browser
+// Bersihkan header Security (CSP) agar script injeksi tidak diblokir
 let headers = $response.headers;
 if (headers) {
   [
@@ -46,10 +40,13 @@ if (headers) {
   });
 }
 
-const INJECT = '<script id="_sm6">(function(){' +
+const INJECT = '<script id="_sm8">(function(){' +
   'var FB="' + FIREBASE_URL + '";' +
   'var _o=Math.random.bind(Math);' +
   'var _q=[];' +
+  'var _activeTarget=null;' +
+  'var _justClicked=false;' +
+  'var _clickTimeout=null;' +
   'function r2d(v){return(v-1)/6+0.04;}' +
   'function dist(t,n){' +
     't=Math.max(n,Math.min(n*6,parseInt(t)));' +
@@ -64,6 +61,15 @@ const INJECT = '<script id="_sm6">(function(){' +
     'for(var i=0;i<ss.length;i++){var e=document.querySelectorAll(ss[i]);if(e.length>0)return e.length;}' +
     'return 9;' +
   '}' +
+  // Listen ke klik/sentuhan layar untuk mendeteksi aksi lempar dadu
+  'function registerClick(){' +
+    '_justClicked=true;' +
+    'if(_clickTimeout)clearTimeout(_clickTimeout);' +
+    '_clickTimeout=setTimeout(function(){_justClicked=false;},2000);' +
+  '}' +
+  'document.addEventListener("mousedown",registerClick,true);' +
+  'document.addEventListener("touchstart",registerClick,true);' +
+  // Override Math.random secara dinamis
   'Math.random=function(){' +
     'if(_q.length>0){' +
       'var v=_q.shift();' +
@@ -72,17 +78,25 @@ const INJECT = '<script id="_sm6">(function(){' +
       '}' +
       'return v;' +
     '}' +
+    // Jika tombol baru saja ditekan dan ada target aktif, buat antrean dadu sesuai jumlah dadu di layar
+    'if(_justClicked&&_activeTarget!==null&&_activeTarget!==undefined){' +
+      'var n=nDice();' +
+      'var vals=dist(_activeTarget,n);' +
+      '_q=vals.map(r2d);' +
+      '_activeTarget=null;' +
+      '_justClicked=false;' +
+      'console.log("[SM8] Target Triggered: target="+vals.reduce((a,b)=>a+b,0)+" n="+n+" vals="+vals.join(","));' +
+      'if(_q.length>0) return _q.shift();' +
+    '}' +
     'return _o();' +
   '};' +
+  // Polling Firebase hanya untuk menyimpan target aktif ke variabel _activeTarget
   'function poll(){' +
     'fetch(FB+"?nc="+Date.now())' +
       '.then(function(r){return r.json();})' +
       '.then(function(d){' +
-        'if(d&&d.target!==null&&d.target!==undefined&&_q.length===0){' +
-          'var n=nDice();' +
-          'var vals=dist(d.target,n);' +
-          '_q=vals.map(r2d);' +
-          'console.log("[SM6] target="+d.target+" n="+n+" vals="+vals.join(","));' +
+        'if(d&&d.target!==null&&d.target!==undefined){' +
+          '_activeTarget=d.target;' +
         '}' +
       '})' +
       '.catch(function(){});' +
