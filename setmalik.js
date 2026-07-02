@@ -1,15 +1,31 @@
 /**
- * SET MALIK v5 - Quantumult X Script
- * Response body modifier untuk halaman dadu Google
- * Script yang diinjeksi langsung poll Firebase - tidak perlu proxy lokal
+ * SET MALIK v6 - Quantumult X Script
+ * Lebih tangguh, menggunakan regex pencarian umum agar pasti ter-intercept.
  */
 
 const FIREBASE_URL = "https://setkbojeng-default-rtdb.asia-southeast1.firebasedatabase.app/8092122107.json";
 
-let body = $response.body;
-if (!body) { $done({}); return; }
+// Kirim notifikasi debug untuk memastikan script berjalan
+$notify("🎲 SET MALIK v6", "Script Terbakar", "Mencoba memproses halaman pencarian...");
 
-// Strip semua CSP agar script injeksi tidak diblokir
+let body = $response.body;
+if (!body) {
+  $done({});
+  return;
+}
+
+// Hanya proses jika halaman mengandung elemen dadu / dice
+const contentLower = body.toLowerCase();
+if (contentLower.indexOf("dadu") === -1 && contentLower.indexOf("dice") === -1 && contentLower.indexOf("roll") === -1) {
+  // Jika bukan halaman dadu, langsung kembalikan halaman asli dengan cepat
+  $done({});
+  return;
+}
+
+// Beritahu pengguna jika halaman dadu terdeteksi dan akan diinjeksi
+$notify("🎲 SET MALIK ACTIVE", "Dadu Google Terdeteksi", "Menyuntikkan pengontrol hasil...");
+
+// Bersihkan header Security (CSP) agar script injeksi tidak diblokir browser
 let headers = $response.headers;
 if (headers) {
   [
@@ -25,10 +41,12 @@ if (headers) {
     'Cross-Origin-Opener-Policy',
     'cross-origin-embedder-policy',
     'Cross-Origin-Embedder-Policy'
-  ].forEach(function(k) { if (headers[k]) delete headers[k]; });
+  ].forEach(function(k) {
+    if (headers[k]) delete headers[k];
+  });
 }
 
-const INJECT = '<script id="_sm5">(function(){' +
+const INJECT = '<script id="_sm6">(function(){' +
   'var FB="' + FIREBASE_URL + '";' +
   'var _o=Math.random.bind(Math);' +
   'var _q=[];' +
@@ -64,7 +82,7 @@ const INJECT = '<script id="_sm5">(function(){' +
           'var n=nDice();' +
           'var vals=dist(d.target,n);' +
           '_q=vals.map(r2d);' +
-          'console.log("[SM5] target="+d.target+" n="+n+" vals="+vals.join(","));' +
+          'console.log("[SM6] target="+d.target+" n="+n+" vals="+vals.join(","));' +
         '}' +
       '})' +
       '.catch(function(){});' +
