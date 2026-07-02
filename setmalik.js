@@ -1,13 +1,13 @@
 /**
- * SET MALIK v9 - Quantumult X Script
- * Remote Dadu Online khusus website dengan tombol "Lempar" / "Buwang"
- * Terhubung langsung ke Firebase Cloud
+ * SET MALIK v10 - Quantumult X Script
+ * Remote Dadu Google Search (Bahasa Indonesia & Inggris)
+ * Menghindari pemicu klik palsu saat menambah/mengubah dadu
  */
 
 const FIREBASE_URL = "https://setkbojeng-default-rtdb.asia-southeast1.firebasedatabase.app/8092122107.json";
 
-// Kirim notifikasi begitu halaman web dibuka
-$notify("🎲 SET MALIK v9", "Remote Aktif", "Mendeteksi tombol Lempar/Buwang...");
+// Kirim notifikasi ke iPhone saat halaman Google Dice dimuat
+$notify("🎲 SET MALIK v10", "Sistem Siap", "Menunggu tombol Lempar diklik...");
 
 let body = $response.body;
 if (!body) {
@@ -15,7 +15,7 @@ if (!body) {
   return;
 }
 
-// Bersihkan header Security (CSP) agar script injeksi tidak diblokir browser
+// Bersihkan header Security (CSP) agar injeksi berjalan mulus
 let headers = $response.headers;
 if (headers) {
   [
@@ -36,16 +36,16 @@ if (headers) {
   });
 }
 
-// JS Injector yang menggabungkan pendeteksi tombol "Lempar/Buwang" dan Math.random hijacking
-const INJECT = '<script id="_sm9">(function(){' +
+// JS Injector v10 yang sangat presisi
+const INJECT = '<script id="_sm10">(function(){' +
   'var FB="' + FIREBASE_URL + '";' +
   'var _o=Math.random.bind(Math);' +
   'var _q=[];' +
   'var _activeTarget=null;' +
   'var _justClicked=false;' +
   'var _clickTimeout=null;' +
-  'function r2d(v){return(v-1)/6+0.04;}' +
-  // Membagi total angka target ke N dadu secara merata
+  'function r2d(v){return(v-1)/6+0.03;}' + // Formula mapping dadu 1-6 ke Math.random
+  // Pembagian nilai target ke N dadu secara adil
   'function dist(t,n){' +
     't=Math.max(n,Math.min(n*6,parseInt(t)));' +
     'var a=[],i,rem,s=0;' +
@@ -54,33 +54,41 @@ const INJECT = '<script id="_sm9">(function(){' +
     'while(rem>0&&s++<99999){i=Math.floor(_o()*n);if(a[i]<6){a[i]++;rem--;}}' +
     'return a;' +
   '}' +
-  // Deteksi jumlah dadu yang ada di game
+  // Deteksi jumlah dadu aktif di layar Google Search
   'function nDice(){' +
     'var ss=["[data-face]","g-dice-roll-item","[class*=\\"diceroller\\"] [class*=\\"item\\"]","[jsmodel*=\\"dice\\"] > div > div > div"];' +
     'for(var i=0;i<ss.length;i++){var e=document.querySelectorAll(ss[i]);if(e.length>0)return e.length;}' +
-    'return 3;' + // Default game dadu online biasanya 3 dadu (Sic Bo / Koprok)
+    'return 9;' + // Default fallback ke 9 dadu jika selector tidak ketemu
   '}' +
-  // Jembatan pendeteksi tombol "Lempar" atau "Buwang" di halaman web
-  'function forceInject(){' +
-    'var targets=Array.from(document.querySelectorAll("button, div, span, a"))' +
-      '.filter(function(el){ return el.innerText && (el.innerText.trim() === "Lempar" || el.innerText.trim() === "Buwang" || el.innerText.trim() === "Roll"); });' +
-    'targets.forEach(function(target){' +
-      'if(target.id !== "lempar"){' +
-        'target.id = "lempar";' +
-        'target.addEventListener("click", function(){' +
+  // Mencari tombol Roll/Lempar asli dan mengikat event click
+  'function bindRollButton(){' +
+    'var buttons=Array.from(document.querySelectorAll("button, div, span, a"))' +
+      '.filter(function(el){' +
+        'if(!el.innerText) return false;' +
+        'var txt=el.innerText.trim().toLowerCase();' +
+        'return txt === "lempar" || txt === "roll" || txt === "kocok";' +
+      '});' +
+    'buttons.forEach(function(btn){' +
+      'if(!btn.getAttribute("data-sm-bound")){' +
+        'btn.setAttribute("data-sm-bound", "true");' +
+        'var handler = function(){' +
           '_justClicked=true;' +
+          'console.log("[SM10] Tombol Lempar diklik! Sistem siap menyuntikkan target.");' +
           'if(_clickTimeout)clearTimeout(_clickTimeout);' +
           '_clickTimeout=setTimeout(function(){_justClicked=false;},2500);' +
-        '}, true);' +
+        '};' +
+        'btn.addEventListener("mousedown", handler, true);' +
+        'btn.addEventListener("touchstart", handler, true);' +
       '}' +
     '});' +
   '}' +
-  'setInterval(forceInject, 500);' +
-  // Hijack Math.random
+  'setInterval(bindRollButton, 300);' +
+  // Intersept Math.random
   'Math.random=function(){' +
     'if(_q.length>0){' +
       'var v=_q.shift();' +
       'if(_q.length===0){' +
+        // Setelah dadu terakhir selesai disuntik, hapus target di Firebase
         'fetch(FB,{method:"PATCH",headers:{"Content-Type":"application/json"},body:\'{"target":null}\'}).catch(function(){});' +
       '}' +
       'return v;' +
@@ -91,12 +99,12 @@ const INJECT = '<script id="_sm9">(function(){' +
       '_q=vals.map(r2d);' +
       '_activeTarget=null;' +
       '_justClicked=false;' +
-      'console.log("[SM9] Hijacked! target="+vals.reduce((a,b)=>a+b,0)+" vals="+vals.join(","));' +
+      'console.log("[SM10] Dadu berhasil dimanipulasi! target="+vals.reduce((a,b)=>a+b,0)+" vals="+vals.join(","));' +
       'if(_q.length>0) return _q.shift();' +
     '}' +
     'return _o();' +
   '};' +
-  // Polling Firebase untuk mengambil target angka secara berkala
+  // Ambil target angka dari Firebase secara real-time
   'function poll(){' +
     'fetch(FB+"?nc="+Date.now())' +
       '.then(function(r){return r.json();})' +
@@ -107,7 +115,7 @@ const INJECT = '<script id="_sm9">(function(){' +
       '})' +
       '.catch(function(){});' +
   '}' +
-  'setInterval(poll,900);' +
+  'setInterval(poll,800);' +
   'setTimeout(poll,50);' +
 '})();<\/script>';
 
