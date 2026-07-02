@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Remote KB by Kaurev (SET MALIK v19)
-// @version      19.0
-// @description  Remote Control Google Dice Roller via Firebase (Self-Contained)
+// @name         Remote KB by Kaurev (SET MALIK v20)
+// @version      20.0
+// @description  Remote Control Google Dice Roller via Firebase (Parent-Iframe Bridge)
 // @author       Kaurev & Antigravity
 // @match        *://*/*
 // @run-at       document-start
@@ -11,7 +11,7 @@
 (function() {
   'use strict';
 
-  // Hanya jalankan script jika berada di halaman Google Search
+  // Saring agar hanya berjalan di domain Google Search
   const currentDomain = window.location.hostname;
   if (!currentDomain.includes("google.com") && !currentDomain.includes("google.co.id")) {
     return;
@@ -26,6 +26,7 @@
   let _isRolling = false;
   let _clickTimeout = null;
   let _rollTimeout = null;
+  const isIframe = (window.self !== window.top);
 
   // Formula konversi nilai dadu 1-6 ke range Math.random()
   function r2d(v) {
@@ -61,7 +62,7 @@
     return count > 0 ? count : 3; // Fallback ke 3 dadu jika gagal deteksi
   }
 
-  // Menampilkan toast notifikasi cantik bergaya glassmorphism di halaman web
+  // Menampilkan toast notifikasi cantik bergaya glassmorphism
   function showToast(title, desc) {
     const initToast = () => {
       if (!document.body) {
@@ -96,7 +97,7 @@
       titleEl.innerText = title;
       titleEl.style.fontWeight = 'bold';
       titleEl.style.fontSize = '14px';
-      titleEl.style.color = '#38bdf8'; // Sky blue accent
+      titleEl.style.color = '#38bdf8';
 
       const descEl = document.createElement('span');
       descEl.innerText = desc;
@@ -107,13 +108,11 @@
       toast.appendChild(descEl);
       document.body.appendChild(toast);
 
-      // Animasi Fade In
       setTimeout(() => {
         toast.style.opacity = '1';
         toast.style.transform = 'translateX(-50%) translateY(0)';
       }, 100);
 
-      // Fade Out setelah 4 detik
       setTimeout(() => {
         toast.style.opacity = '0';
         toast.style.transform = 'translateX(-50%) translateY(-20px)';
@@ -123,105 +122,155 @@
     initToast();
   }
 
-  // Tampilkan notifikasi saat script pertama kali jalan di Google
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-      showToast("🎲 SET MALIK v19", "Userscript Aktif - Menunggu lemparan...");
-    });
-  } else {
-    showToast("🎲 SET MALIK v19", "Userscript Aktif - Menunggu lemparan...");
-  }
-
-  // Deteksi klik lempar secara global dengan filter
-  function checkClick(e) {
-    if (_isRolling) return;
-    const path = e.composedPath ? e.composedPath() : [];
-    let isAddDiceClick = false;
-    let isClearClick = false;
-
-    for (let i = 0; i < path.length; i++) {
-      const el = path[i];
-      if (!el) continue;
-      if (el.innerText) {
-        const txt = el.innerText.trim().toLowerCase();
-        if (/^(d4|d6|d8|d10|d12|d20|\+|-)$/.test(txt)) {
-          isAddDiceClick = true;
-        }
-        if (txt === "hapus" || txt === "clear" || txt === "reset") {
-          isClearClick = true;
-        }
-      }
-      if (el.getAttribute) {
-        const aria = el.getAttribute("aria-label") ? el.getAttribute("aria-label").toLowerCase() : "";
-        if (aria.includes("d4") || aria.includes("d6") || aria.includes("d8") || aria.includes("d10") || aria.includes("d12") || aria.includes("d20")) {
-          isAddDiceClick = true;
-        }
-        if (aria.includes("clear") || aria.includes("hapus")) {
-          isClearClick = true;
-        }
-      }
-    }
-
-    if (!isAddDiceClick && !isClearClick) {
-      _justClicked = true;
-      if (_clickTimeout) clearTimeout(_clickTimeout);
-      _clickTimeout = setTimeout(() => { _justClicked = false; }, 2500);
+  // Pemicu inisialisasi visual toast
+  if (!isIframe) {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => {
+        showToast("🎲 SET MALIK v20", "Bridge Engine Aktif - Menunggu lemparan...");
+      });
+    } else {
+      showToast("🎲 SET MALIK v20", "Bridge Engine Aktif - Menunggu lemparan...");
     }
   }
 
-  window.addEventListener("mousedown", checkClick, true);
-  window.addEventListener("touchstart", checkClick, true);
+  // --- LOGIKA UTAMA ---
 
-  // Hijack Math.random
-  Math.random = function() {
-    if (_justClicked && !_isRolling) {
-      if (_activeTarget !== null && _activeTarget !== undefined) {
-        const n = nDice();
-        const vals = dist(_activeTarget, n);
-        _q = vals.map(r2d);
-        _isRolling = true;
-        _justClicked = false;
-        
-        // Hapus target di Firebase agar tidak double roll
+  if (!isIframe) {
+    // ------------------ PARENT WINDOW CONTEXT ------------------
+    // Melakukan polling Firebase dan memancarkan data target ke iframe
+
+    let lastSentTarget = null;
+
+    function broadcastTarget(target) {
+      // Kirim ke semua iframe di halaman
+      const iframes = document.querySelectorAll("iframe");
+      iframes.forEach(f => {
+        try {
+          f.contentWindow.postMessage({ type: "SET_TARGET", target: target }, "*");
+        } catch(err) {}
+      });
+      // Kirim juga ke window sendiri (jika dadu dirender di Light DOM parent)
+      window.postMessage({ type: "SET_TARGET", target: target }, "*");
+    }
+
+    // Dengarkan pesan reset dari iframe
+    window.addEventListener("message", function(e) {
+      if (e.data && e.data.type === "RESET_TARGET") {
+        console.log("[Parent] Menerima sinyal reset dari iframe, menghapus target di Firebase...");
         fetch(FIREBASE_URL, {
-          method: "PATCH",
+          method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: '{"target":null}'
         }).catch(() => {});
-        
         _activeTarget = null;
+        broadcastTarget(null);
+      }
+    });
 
-        // Kunci target selama 4 detik penuh untuk visual animation
-        if (_rollTimeout) clearTimeout(_rollTimeout);
-        _rollTimeout = setTimeout(() => {
-          _isRolling = false;
-          _q = [];
-        }, 4000);
+    // Polling Firebase Realtime Database
+    function poll() {
+      fetch(FIREBASE_URL + "?nc=" + Date.now())
+        .then(r => r.json())
+        .then(d => {
+          if (d && d.target !== null && d.target !== undefined) {
+            _activeTarget = d.target;
+          } else {
+            _activeTarget = null;
+          }
+          if (_activeTarget !== lastSentTarget) {
+            lastSentTarget = _activeTarget;
+            broadcastTarget(_activeTarget);
+          }
+        })
+        .catch(() => {});
+    }
+
+    setInterval(poll, 800);
+    setTimeout(poll, 50);
+
+  } else {
+    // ------------------ IFRAME CONTEXT (DICE ENGINE) ------------------
+    // Mengubah Math.random dan mendengarkan broadcast target dari Parent Window
+
+    // Pasang listener penerima target dari parent window
+    window.addEventListener("message", function(e) {
+      if (e.data && e.data.type === "SET_TARGET") {
+        _activeTarget = e.data.target;
+        console.log("[Iframe] Target ter-update dari Parent: " + _activeTarget);
+      }
+    });
+
+    // Deteksi klik lempar
+    function checkClick(e) {
+      if (_isRolling) return;
+      const path = e.composedPath ? e.composedPath() : [];
+      let isAddDiceClick = false;
+      let isClearClick = false;
+
+      for (let i = 0; i < path.length; i++) {
+        const el = path[i];
+        if (!el) continue;
+        if (el.innerText) {
+          const txt = el.innerText.trim().toLowerCase();
+          if (/^(d4|d6|d8|d10|d12|d20|\+|-)$/.test(txt)) {
+            isAddDiceClick = true;
+          }
+          if (txt === "hapus" || txt === "clear" || txt === "reset") {
+            isClearClick = true;
+          }
+        }
+        if (el.getAttribute) {
+          const aria = el.getAttribute("aria-label") ? el.getAttribute("aria-label").toLowerCase() : "";
+          if (aria.includes("d4") || aria.includes("d6") || aria.includes("d8") || aria.includes("d10") || aria.includes("d12") || aria.includes("d20")) {
+            isAddDiceClick = true;
+          }
+          if (aria.includes("clear") || aria.includes("hapus")) {
+            isClearClick = true;
+          }
+        }
+      }
+
+      if (!isAddDiceClick && !isClearClick) {
+        _justClicked = true;
+        if (_clickTimeout) clearTimeout(_clickTimeout);
+        _clickTimeout = setTimeout(() => { _justClicked = false; }, 2500);
       }
     }
 
-    if (_isRolling && _q.length > 0) {
-      return _q.shift();
-    }
-    return _o();
-  };
+    window.addEventListener("mousedown", checkClick, true);
+    window.addEventListener("touchstart", checkClick, true);
 
-  // Polling Firebase secara berkala
-  function poll() {
-    if (_isRolling) return;
-    fetch(FIREBASE_URL + "?nc=" + Date.now())
-      .then(r => r.json())
-      .then(d => {
-        if (d && d.target !== null && d.target !== undefined) {
-          _activeTarget = d.target;
-        } else {
+    // Hijack Math.random
+    Math.random = function() {
+      if (_justClicked && !_isRolling) {
+        if (_activeTarget !== null && _activeTarget !== undefined) {
+          const n = nDice();
+          const vals = dist(_activeTarget, n);
+          _q = vals.map(r2d);
+          _isRolling = true;
+          _justClicked = false;
+          
+          // Kirim sinyal ke parent window agar parent yang melakukan reset ke Firebase
+          try {
+            window.parent.postMessage({ type: "RESET_TARGET" }, "*");
+          } catch(err) {}
+          
           _activeTarget = null;
-        }
-      })
-      .catch(() => {});
-  }
 
-  setInterval(poll, 800);
-  setTimeout(poll, 50);
+          // Kunci target selama 4 detik penuh agar animasi visual selesai bergulir
+          if (_rollTimeout) clearTimeout(_rollTimeout);
+          _rollTimeout = setTimeout(() => {
+            _isRolling = false;
+            _q = [];
+          }, 4000);
+        }
+      }
+
+      if (_isRolling && _q.length > 0) {
+        return _q.shift();
+      }
+      return _o();
+    };
+  }
 
 })();
