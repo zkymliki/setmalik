@@ -1,13 +1,13 @@
 /**
- * SET MALIK v15 - Quantumult X Script
- * Time-Interval Roll Detector (Bebas Izin Klik & Kebal Perubahan DOM)
+ * SET MALIK v16 - Quantumult X Script
+ * Desain Kunci Target 4 Detik (Anti-Physics & Anti-Late Polling)
  * Update Otomatis Real-time via GitHub
  */
 
 const FIREBASE_URL = "https://setkbojeng-default-rtdb.asia-southeast1.firebasedatabase.app/8092122107.json";
 
-// Kirim notifikasi ke iPhone
-$notify("🎲 SET MALIK v15", "Time-Interval Engine Aktif", "Menunggu kocokan dadu di Safari...");
+// Kirim notifikasi ke iPhone saat dimuat
+$notify("🎲 SET MALIK v16", "Sistem Kunci 4s Aktif", "Menunggu kocokan dadu di Safari...");
 
 let body = $response.body;
 if (!body) {
@@ -36,13 +36,15 @@ if (headers) {
   });
 }
 
-// JS Injector v15
-const INJECT = '<script id="_sm15">(function(){' +
+// JS Injector v16
+const INJECT = '<script id="_sm16">(function(){' +
   'var FB="' + FIREBASE_URL + '";' +
   'var _o=Math.random.bind(Math);' +
   'var _q=[];' +
   'var _activeTarget=null;' +
   'var _lastRandomTime=0;' +
+  'var _isRolling=false;' +
+  'var _rollTimeout=null;' +
   'function r2d(v){return(v-1)/6+0.03;}' +
   // Pembagian nilai target ke N dadu secara adil
   'function dist(t,n){' +
@@ -65,31 +67,40 @@ const INJECT = '<script id="_sm15">(function(){' +
     '} catch(e) {}' +
     'return count > 0 ? count : 3;' + // Fallback ke 3 dadu
   '}' +
-  // override Math.random (Siklik + Selisih Waktu)
+  // override Math.random (Kunci 4 Detik)
   'Math.random=function(){' +
     'var now = Date.now();' +
-    // Jika selisih waktu dengan pemanggilan random sebelumnya > 1.2 detik,
-    // maka ini adalah awal dari roll dadu baru oleh pengguna!
-    'if(now - _lastRandomTime > 1200){' +
-      'if(_activeTarget !== null && _activeTarget !== undefined){' +
+    // Jika selisih waktu dengan pemanggilan random sebelumnya > 1.5 detik (1500ms)
+    // dan target di Firebase aktif, kita kunci target untuk lemparan baru ini!
+    'if(now - _lastRandomTime > 1500){' +
+      'if(_activeTarget !== null && _activeTarget !== undefined && !_isRolling){' +
         'var n = nDice();' +
         'var vals = dist(_activeTarget, n);' +
         '_q = vals.map(r2d);' +
-        'console.log("[SM15] Lembaran baru terdeteksi! target=" + _activeTarget + " vals=" + vals.join(","));' +
-        // Setelah target dipakai, hapus target di Firebase
+        '_isRolling = true;' +
+        'console.log("[SM16] Lembaran baru dikunci! target=" + _activeTarget + " vals=" + vals.join(","));' +
+        // Segera hapus target di Firebase agar tidak ter-trigger double di roll berikutnya
         'fetch(FB,{method:"PATCH",headers:{"Content-Type":"application/json"},body:\'{"target":null}\'}).catch(function(){});' +
         '_activeTarget = null;' +
+        // Pertahankan status rolling dan antrean selama 4 detik penuh agar animasi selesai
+        'if(_rollTimeout) clearTimeout(_rollTimeout);' +
+        '_rollTimeout = setTimeout(function(){' +
+          '_isRolling = false;' +
+          '_q = [];' +
+          'console.log("[SM16] Kunci target dilepas.");' +
+        '}, 4000);' +
       '}' +
     '}' +
     '_lastRandomTime = now;' +
-    // Jika ada nilai target di antrean, suntikkan!
-    'if(_q.length > 0){' +
+    // Jika sedang dalam status mengunci target, berikan nilai dari antrean
+    'if(_isRolling && _q.length > 0){' +
       'return _q.shift();' +
     '}' +
     'return _o();' +
   '};' +
   // Polling database Firebase secara real-time
   'function poll(){' +
+    'if(_isRolling) return;' + // Jangan update target dari Firebase saat dadu sedang berputar
     'fetch(FB+"?nc="+Date.now())' +
       '.then(function(r){return r.json();})' +
       '.then(function(d){' +
