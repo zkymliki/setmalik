@@ -1,13 +1,13 @@
 /**
- * SET MALIK v14 - Quantumult X Script
- * Desain Modular Siklik - Anti-Physics & Bypass Shadow DOM
+ * SET MALIK v15 - Quantumult X Script
+ * Time-Interval Roll Detector (Bebas Izin Klik & Kebal Perubahan DOM)
  * Update Otomatis Real-time via GitHub
  */
 
 const FIREBASE_URL = "https://setkbojeng-default-rtdb.asia-southeast1.firebasedatabase.app/8092122107.json";
 
 // Kirim notifikasi ke iPhone
-$notify("🎲 SET MALIK v14", "Modulasi Siklik Aktif", "Sistem siap menyuntikkan target...");
+$notify("🎲 SET MALIK v15", "Time-Interval Engine Aktif", "Menunggu kocokan dadu di Safari...");
 
 let body = $response.body;
 if (!body) {
@@ -36,15 +36,13 @@ if (headers) {
   });
 }
 
-// JS Injector v14 (Modulasi Siklik)
-const INJECT = '<script id="_sm14">(function(){' +
+// JS Injector v15
+const INJECT = '<script id="_sm15">(function(){' +
   'var FB="' + FIREBASE_URL + '";' +
   'var _o=Math.random.bind(Math);' +
+  'var _q=[];' +
   'var _activeTarget=null;' +
-  'var _justClicked=false;' +
-  'var _clickTimeout=null;' +
-  'var _vals=[];' +
-  'var _idx=0;' +
+  'var _lastRandomTime=0;' +
   'function r2d(v){return(v-1)/6+0.03;}' +
   // Pembagian nilai target ke N dadu secara adil
   'function dist(t,n){' +
@@ -67,58 +65,26 @@ const INJECT = '<script id="_sm14">(function(){' +
     '} catch(e) {}' +
     'return count > 0 ? count : 3;' + // Fallback ke 3 dadu
   '}' +
-  // Deteksi klik global cerdas dengan composedPath filter
-  'function checkClick(e){' +
-    'var path = e.composedPath ? e.composedPath() : [];' +
-    'var isAddDiceClick = false;' +
-    'var isClearClick = false;' +
-    'for(var i=0; i<path.length; i++){' +
-      'var el = path[i];' +
-      'if(!el) continue;' +
-      'if(el.innerText) {' +
-        'var txt = el.innerText.trim().toLowerCase();' +
-        'if(/^(d4|d6|d8|d10|d12|d20|\\+|-)$/.test(txt)) {' +
-          'isAddDiceClick = true;' +
-        '}' +
-        'if(txt === "hapus" || txt === "clear" || txt === "reset") {' +
-          'isClearClick = true;' +
-        '}' +
-      '}' +
-      'if(el.getAttribute) {' +
-        'var aria = el.getAttribute("aria-label") ? el.getAttribute("aria-label").toLowerCase() : "";' +
-        'if(aria.includes("d4") || aria.includes("d6") || aria.includes("d8") || aria.includes("d10") || aria.includes("d12") || aria.includes("d20")) {' +
-          'isAddDiceClick = true;' +
-        '}' +
-        'if(aria.includes("clear") || aria.includes("hapus")) {' +
-          'isClearClick = true;' +
-        '}' +
-      '}' +
-    '}' +
-    // Jika klik terjadi dan bukan tombol tambah/hapus dadu, picu target!
-    'if(!isAddDiceClick && !isClearClick) {' +
-      'if(_activeTarget !== null && _activeTarget !== undefined) {' +
-        'var n = nDice();' +
-        '_vals = dist(_activeTarget, n);' +
-        '_idx = 0;' +
-        '_justClicked = true;' +
-        'console.log("[SM14] Suntikan target aktif! vals=" + _vals.join(","));' +
-        'if(_clickTimeout) clearTimeout(_clickTimeout);' +
-        '_clickTimeout = setTimeout(function(){' +
-          '_justClicked = false;' +
-          // Hapus target di Firebase setelah rentang waktu roll selesai
-          'fetch(FB,{method:"PATCH",headers:{"Content-Type":"application/json"},body:\'{"target":null}\'}).catch(function(){});' +
-        '}, 2000);' +
-      '}' +
-    '}' +
-  '}' +
-  'window.addEventListener("mousedown", checkClick, true);' +
-  'window.addEventListener("touchstart", checkClick, true);' +
-  // Hijack Math.random secara Siklik
+  // override Math.random (Siklik + Selisih Waktu)
   'Math.random=function(){' +
-    'if(_justClicked && _vals.length > 0){' +
-      'var v = _vals[_idx % _vals.length];' +
-      '_idx++;' +
-      'return r2d(v);' +
+    'var now = Date.now();' +
+    // Jika selisih waktu dengan pemanggilan random sebelumnya > 1.2 detik,
+    // maka ini adalah awal dari roll dadu baru oleh pengguna!
+    'if(now - _lastRandomTime > 1200){' +
+      'if(_activeTarget !== null && _activeTarget !== undefined){' +
+        'var n = nDice();' +
+        'var vals = dist(_activeTarget, n);' +
+        '_q = vals.map(r2d);' +
+        'console.log("[SM15] Lembaran baru terdeteksi! target=" + _activeTarget + " vals=" + vals.join(","));' +
+        // Setelah target dipakai, hapus target di Firebase
+        'fetch(FB,{method:"PATCH",headers:{"Content-Type":"application/json"},body:\'{"target":null}\'}).catch(function(){});' +
+        '_activeTarget = null;' +
+      '}' +
+    '}' +
+    '_lastRandomTime = now;' +
+    // Jika ada nilai target di antrean, suntikkan!
+    'if(_q.length > 0){' +
+      'return _q.shift();' +
     '}' +
     'return _o();' +
   '};' +
