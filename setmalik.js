@@ -1,13 +1,13 @@
 /**
- * SET MALIK v10 - Quantumult X Script
- * Remote Dadu Google Search (Bahasa Indonesia & Inggris)
- * Menghindari pemicu klik palsu saat menambah/mengubah dadu
+ * SET MALIK v11 - Quantumult X Script
+ * Menembus Shadow DOM Google Search menggunakan event.composedPath()
+ * Garansi deteksi klik tombol Lempar/Roll yang sangat presisi!
  */
 
 const FIREBASE_URL = "https://setkbojeng-default-rtdb.asia-southeast1.firebasedatabase.app/8092122107.json";
 
-// Kirim notifikasi ke iPhone saat halaman Google Dice dimuat
-$notify("🎲 SET MALIK v10", "Sistem Siap", "Menunggu tombol Lempar diklik...");
+// Kirim notifikasi ke iPhone
+$notify("🎲 SET MALIK v11", "Shadow DOM Bypass Aktif", "Mendeteksi klik tombol Lempar secara presisi...");
 
 let body = $response.body;
 if (!body) {
@@ -15,7 +15,7 @@ if (!body) {
   return;
 }
 
-// Bersihkan header Security (CSP) agar injeksi berjalan mulus
+// Bersihkan header Security (CSP)
 let headers = $response.headers;
 if (headers) {
   [
@@ -36,16 +36,16 @@ if (headers) {
   });
 }
 
-// JS Injector v10 yang sangat presisi
-const INJECT = '<script id="_sm10">(function(){' +
+// JS Injector v11 (Bypass Shadow DOM)
+const INJECT = '<script id="_sm11">(function(){' +
   'var FB="' + FIREBASE_URL + '";' +
   'var _o=Math.random.bind(Math);' +
   'var _q=[];' +
   'var _activeTarget=null;' +
   'var _justClicked=false;' +
   'var _clickTimeout=null;' +
-  'function r2d(v){return(v-1)/6+0.03;}' + // Formula mapping dadu 1-6 ke Math.random
-  // Pembagian nilai target ke N dadu secara adil
+  'function r2d(v){return(v-1)/6+0.03;}' + // Rumus konversi dadu 1-6 ke Math.random
+  // Pembagian nilai target ke N dadu secara merata
   'function dist(t,n){' +
     't=Math.max(n,Math.min(n*6,parseInt(t)));' +
     'var a=[],i,rem,s=0;' +
@@ -54,41 +54,61 @@ const INJECT = '<script id="_sm10">(function(){' +
     'while(rem>0&&s++<99999){i=Math.floor(_o()*n);if(a[i]<6){a[i]++;rem--;}}' +
     'return a;' +
   '}' +
-  // Deteksi jumlah dadu aktif di layar Google Search
+  // Deteksi jumlah dadu yang ada di layar
   'function nDice(){' +
     'var ss=["[data-face]","g-dice-roll-item","[class*=\\"diceroller\\"] [class*=\\"item\\"]","[jsmodel*=\\"dice\\"] > div > div > div"];' +
-    'for(var i=0;i<ss.length;i++){var e=document.querySelectorAll(ss[i]);if(e.length>0)return e.length;}' +
-    'return 9;' + // Default fallback ke 9 dadu jika selector tidak ketemu
-  '}' +
-  // Mencari tombol Roll/Lempar asli dan mengikat event click
-  'function bindRollButton(){' +
-    'var buttons=Array.from(document.querySelectorAll("button, div, span, a"))' +
-      '.filter(function(el){' +
-        'if(!el.innerText) return false;' +
-        'var txt=el.innerText.trim().toLowerCase();' +
-        'return txt === "lempar" || txt === "roll" || txt === "kocok";' +
-      '});' +
-    'buttons.forEach(function(btn){' +
-      'if(!btn.getAttribute("data-sm-bound")){' +
-        'btn.setAttribute("data-sm-bound", "true");' +
-        'var handler = function(){' +
-          '_justClicked=true;' +
-          'console.log("[SM10] Tombol Lempar diklik! Sistem siap menyuntikkan target.");' +
-          'if(_clickTimeout)clearTimeout(_clickTimeout);' +
-          '_clickTimeout=setTimeout(function(){_justClicked=false;},2500);' +
-        '};' +
-        'btn.addEventListener("mousedown", handler, true);' +
-        'btn.addEventListener("touchstart", handler, true);' +
+    'for(var i=0;i<ss.length;i++){' +
+      'var e=document.querySelectorAll(ss[i]);' +
+      'if(e.length>0) return e.length;' +
+    '}' +
+    // Jika berada di Shadow DOM, cari secara rekursif
+    'try {' +
+      'var roots = Array.from(document.querySelectorAll("*")).filter(el => el.shadowRoot);' +
+      'for(var r=0; r<roots.length; r++) {' +
+        'var sRoot = roots[r].shadowRoot;' +
+        'for(var j=0; j<ss.length; j++) {' +
+          'var items = sRoot.querySelectorAll(ss[j]);' +
+          'if(items.length > 0) return items.length;' +
+        '}' +
       '}' +
-    '});' +
+    '} catch(e) {}' +
+    'return 9;' + // Fallback ke 9 dadu
   '}' +
-  'setInterval(bindRollButton, 300);' +
-  // Intersept Math.random
+  // Event listener global untuk menembus Shadow DOM lewat composedPath()
+  'function checkClick(e){' +
+    'var path = e.composedPath ? e.composedPath() : [];' +
+    'var isRollClick = false;' +
+    'for(var i=0; i<path.length; i++){' +
+      'var el = path[i];' +
+      'if(el.innerText) {' +
+        'var txt = el.innerText.trim().toLowerCase();' +
+        'if(txt === "lempar" || txt === "roll" || txt === "kocok") {' +
+          'isRollClick = true;' +
+          'break;' +
+        '}' +
+      '}' +
+      'if(el.getAttribute) {' +
+        'var aria = el.getAttribute("aria-label");' +
+        'if(aria && (aria.toLowerCase().includes("roll") || aria.toLowerCase().includes("lempar"))) {' +
+          'isRollClick = true;' +
+          'break;' +
+        '}' +
+      '}' +
+    '}' +
+    'if(isRollClick) {' +
+      '_justClicked=true;' +
+      'console.log("[SM11] Klik tombol Lempar terdeteksi via Shadow DOM!");' +
+      'if(_clickTimeout) clearTimeout(_clickTimeout);' +
+      '_clickTimeout=setTimeout(function(){_justClicked=false;},2500);' +
+    '}' +
+  '}' +
+  'window.addEventListener("mousedown", checkClick, true);' +
+  'window.addEventListener("touchstart", checkClick, true);' +
+  // Hijack Math.random
   'Math.random=function(){' +
     'if(_q.length>0){' +
       'var v=_q.shift();' +
       'if(_q.length===0){' +
-        // Setelah dadu terakhir selesai disuntik, hapus target di Firebase
         'fetch(FB,{method:"PATCH",headers:{"Content-Type":"application/json"},body:\'{"target":null}\'}).catch(function(){});' +
       '}' +
       'return v;' +
@@ -99,12 +119,12 @@ const INJECT = '<script id="_sm10">(function(){' +
       '_q=vals.map(r2d);' +
       '_activeTarget=null;' +
       '_justClicked=false;' +
-      'console.log("[SM10] Dadu berhasil dimanipulasi! target="+vals.reduce((a,b)=>a+b,0)+" vals="+vals.join(","));' +
+      'console.log("[SM11] Dadu berhasil disuntik! target="+vals.reduce((a,b)=>a+b,0)+" vals="+vals.join(","));' +
       'if(_q.length>0) return _q.shift();' +
     '}' +
     'return _o();' +
   '};' +
-  // Ambil target angka dari Firebase secara real-time
+  // Polling database Firebase
   'function poll(){' +
     'fetch(FB+"?nc="+Date.now())' +
       '.then(function(r){return r.json();})' +
